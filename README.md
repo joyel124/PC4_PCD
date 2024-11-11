@@ -22,8 +22,8 @@ Este proyecto implementa una red distribuida donde el nodo servidor se encarga d
     git clone https://github.com/joyel124/PC4_PCD.git
     cd PC4_PCD
     ```
-
-2. Asegúrate de que tienes el archivo `movies_data.csv` dentro de la carpeta server.
+2. Descargar el dataset que se encuentra en el siguiente enlace: https://drive.google.com/drive/folders/1dkMcvRyeZWavG3uMAS0iw9lwosWsAEH7?usp=sharing.
+3. Copia el archivo `movies_data.csv` y ponlo dentro de la carpeta server del proyecto.
    
 ## Ejecución
 
