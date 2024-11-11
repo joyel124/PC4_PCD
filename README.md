@@ -8,7 +8,7 @@ Este proyecto implementa una red distribuida donde el nodo servidor se encarga d
 - **`server`**: Carpeta que contiene la implementación del nodo servidor con su respectivo Dockerfile.
 - **`server/movies_data.csv`**: Dataset valoracion de peliculas(UserID: Id del usuario; MovieID: Id de la pelicula; Rating: Valoracion de la pelicula hecha por el usuario).
 - **`docker-compose.yml`**: Archivo con la configuracion de los contenedores(nodo1, nodo2, nodo3 y server).
-- - **`test.go`**: Archivo de prueba que contiene la implementacion del filtro colaborativo.
+- **`test.go`**: Archivo de prueba que contiene la implementacion del filtro colaborativo.
 
 ## Requisitos
 
