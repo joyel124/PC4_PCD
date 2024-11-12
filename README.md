@@ -1,19 +1,19 @@
 # Collaborative Filtering in Recommender System
 
-Este proyecto implementa una red distribuida donde el nodo servidor se encarga de leer y fragmetar los datos, mientras que los nodos cliente se encargan de procesar los datos y devolver las recomendaciones al nodo servidor.
+Este proyecto implementa una red distribuida donde el nodo servidor se encarga de un usuario, mientras que los nodos cliente se encargan de procesar los datos y devolver las recomendaciones para ese usuario al nodo servidor.
 
 ## Estructura del Proyecto
 
 - **`nodo1|nodo2|nodo3`**: Carpetas que contiene la implementación del nodo cliente con su respectivo Dockerfile.
 - **`server`**: Carpeta que contiene la implementación del nodo servidor con su respectivo Dockerfile.
-- **`server/movies_data.csv`**: Dataset valoracion de peliculas(UserID: Id del usuario; MovieID: Id de la pelicula; Rating: Valoracion de la pelicula hecha por el usuario).
+- **`nodo1|nodo2|nodo3/dataset.csv`**: Dataset de valoracion de peliculas(UserID: Id del usuario; MovieID: Id de la pelicula; Rating: Valoracion de la pelicula hecha por el usuario).
 - **`docker-compose.yml`**: Archivo con la configuracion de los contenedores(nodo1, nodo2, nodo3 y server).
 - **`test.go`**: Archivo de prueba que contiene la implementacion del filtro colaborativo.
 
 ## Requisitos
 
 - Go (Golang) instalado en tu sistema.
-- El archivo de datos `movies_data.csv` dentro de la carpeta server(se tiene que descargar por separado ya que no se podia subir al repositorio porque excedia el limite).
+- El archivo de datos `dataset.csv` dentro de la carpeta nodo1/nodo2/nodo3(se tiene que descargar por separado ya que no se podia subir al repositorio porque excedia el limite).
 - Docker.
 
 ## Instalación
@@ -24,7 +24,7 @@ Este proyecto implementa una red distribuida donde el nodo servidor se encarga d
     cd PC4_PCD
     ```
 2. Descargar el dataset que se encuentra en el siguiente enlace: https://drive.google.com/drive/folders/1dkMcvRyeZWavG3uMAS0iw9lwosWsAEH7?usp=sharing.
-3. Copia el archivo `movies_data.csv` y ponlo dentro de la carpeta server del proyecto.
+3. Copia el archivo `dataset.csv` y ponlo dentro de la carpeta nodo1/nodo2/nodo3 del proyecto.
    
 ## Ejecución
 
