@@ -7,6 +7,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "19002:9002"
+    volumes:
+      - dataset:/var/my-data
     depends_on:
       - server
     networks:
@@ -18,6 +20,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "29002:9002"
+    volumes:
+      - dataset:/var/my-data
     depends_on:
       - server
     networks:
@@ -29,6 +33,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "39002:9002"
+    volumes:
+      - dataset:/var/my-data
     depends_on:
       - server
     networks:
@@ -40,8 +46,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "49002:9002"
-    volumes:
-      - dataset:/var/my-data
     networks:
       my_network:
         ipv4_address: 172.20.0.5

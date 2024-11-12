@@ -1,155 +1,170 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/gob"
 	"fmt"
-	"io"
+	"math"
 	"net"
-	"strings"
+	"os"
+	"strconv"
 	"time"
 )
 
-// Estructura que representa un rating en el dataset de recomendaciones
-type Rating struct {
-	UserID  int
-	MovieID int
-	Rating  float64
+// Estructura para almacenar la matriz de calificaciones
+type RatingData struct {
+	Ratings map[int]map[int]float64
 }
 
-// Fragmento de datos que se enviará a cada nodo
-type DataFragment struct {
-	FragmentID int
-	Data       []Rating
+// Cargar datos de calificaciones
+func loadNetflixData(filename string) (RatingData, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return RatingData{}, err
+	}
+	defer file.Close()
+
+	data := RatingData{Ratings: make(map[int]map[int]float64)}
+	reader := csv.NewReader(file)
+
+	// Leer encabezado
+	_, err = reader.Read()
+	if err != nil {
+		return data, err
+	}
+
+	for {
+		record, err := reader.Read()
+		if err != nil {
+			break
+		}
+
+		movieID, _ := strconv.Atoi(record[0])
+		customerID, _ := strconv.Atoi(record[1])
+		rating, _ := strconv.ParseFloat(record[2], 64)
+
+		if data.Ratings[customerID] == nil {
+			data.Ratings[customerID] = make(map[int]float64)
+		}
+		data.Ratings[customerID][movieID] = rating
+	}
+
+	return data, nil
 }
 
-// Función para recibir fragmentos desde el servidor
-func receiveFragment(conn net.Conn) (DataFragment, error) {
-	var fragment DataFragment
-	decoder := gob.NewDecoder(conn)
-	err := decoder.Decode(&fragment)
-	return fragment, err
+// Calcular la similitud de coseno entre dos usuarios
+func cosineSimilarity(user1, user2 map[int]float64) float64 {
+	var dotProduct, normA, normB float64
+	for movieID, rating1 := range user1 {
+		if rating2, exists := user2[movieID]; exists {
+			dotProduct += rating1 * rating2
+			normA += rating1 * rating1
+			normB += rating2 * rating2
+		}
+	}
+	if normA == 0 || normB == 0 {
+		return 0.0
+	}
+	return dotProduct / (math.Sqrt(normA) * math.Sqrt(normB))
+}
+
+// Encontrar el usuario más similar al usuario objetivo
+func findMostSimilarUser(data RatingData, targetUser int) int {
+	maxSim := 0.0
+	similarUser := -1
+	maxCommonRatings := 0
+
+	for userID, ratings := range data.Ratings {
+		if userID != targetUser {
+			sim := cosineSimilarity(data.Ratings[targetUser], ratings)
+			commonRatings := 0
+
+			for movieID := range data.Ratings[targetUser] {
+				if _, exists := ratings[movieID]; exists {
+					commonRatings++
+				}
+			}
+
+			if sim > maxSim || (sim == maxSim && commonRatings > maxCommonRatings) {
+				maxSim = sim
+				similarUser = userID
+				maxCommonRatings = commonRatings
+			}
+		}
+	}
+	return similarUser
+}
+
+// Generar recomendaciones para el usuario objetivo basado en el usuario más similar
+func generateRecommendations(data RatingData, targetUser int) []int {
+	similarUser := findMostSimilarUser(data, targetUser)
+	recommendations := []int{}
+
+	for movieID, rating := range data.Ratings[similarUser] {
+		if _, rated := data.Ratings[targetUser][movieID]; !rated && rating >= 3.0 {
+			recommendations = append(recommendations, movieID)
+		}
+	}
+	return recommendations
 }
 
 // Función para enviar el resultado procesado al servidor
-func sendResult(conn net.Conn, result float64) error {
+func sendResult(conn net.Conn, result []int) error {
 	encoder := gob.NewEncoder(conn)
 	return encoder.Encode(result)
 }
 
-// Función para enviar mensaje de finalización al servidor
-func sendCompletionMessage(conn net.Conn) error {
-	completionMessage := "finished"
-	encoder := gob.NewEncoder(conn)
-	return encoder.Encode(completionMessage)
-}
-
-// Procesa un fragmento de datos, calculando el promedio de los ratings
-func processFragment(fragment DataFragment) float64 {
-	var sum float64
-	for _, value := range fragment.Data {
-		sum += value.Rating
-	}
-	if len(fragment.Data) == 0 {
-		return 0 // Evita división por cero si el fragmento está vacío
-	}
-	return sum / float64(len(fragment.Data)) // Promedio de los datos
-}
-
-// Función para mostrar el progreso de procesamiento
-func showProgress(current, total int) {
-	progress := float64(current) / float64(total) * 100
-	fmt.Printf("\rProgreso: [%-50s] %.2f%%", stringProgress(int(progress)), progress)
-}
-
-// Genera una cadena de progreso visual
-func stringProgress(progress int) string {
-	barLength := 50
-	filled := (progress * barLength) / 100
-	return fmt.Sprintf("%s%s", strings.Repeat("=", filled), strings.Repeat("-", barLength-filled))
-}
-
-// Función para conectar al servidor
-func connectToServer() net.Conn {
+// Conectar al servidor y recibir el ID del usuario
+func connectToServerAndReceiveUserID() (net.Conn, int, error) {
 	var conn net.Conn
 	var err error
+
 	for {
-		conn, err = net.Dial("tcp", "172.20.0.5:9002") // Cambia la IP si es necesario
+		conn, err = net.Dial("tcp", "172.20.0.5:9002")
 		if err != nil {
 			fmt.Println("Error al conectar con el servidor. Reintentando en 2 segundos...")
 			time.Sleep(2 * time.Second)
 			continue
 		}
 		fmt.Println("Conectado al servidor")
-		return conn
+
+		// Decodificar el ID del usuario objetivo recibido desde el servidor
+		var targetUserID int
+		decoder := gob.NewDecoder(conn)
+		if err := decoder.Decode(&targetUserID); err != nil {
+			fmt.Println("Error al recibir ID del usuario:", err)
+			conn.Close()
+			return nil, 0, err
+		}
+		fmt.Printf("ID del usuario objetivo recibido: %d\n", targetUserID)
+		return conn, targetUserID, nil
 	}
 }
 
 func main() {
-	var totalFragments int // Contador total estimado de fragmentos
+	// Conectar al servidor y recibir el ID del usuario
+	conn, targetUserID, err := connectToServerAndReceiveUserID()
+	if err != nil {
+		fmt.Println("Error al conectarse al servidor:", err)
+		return
+	}
+	defer conn.Close()
 
-	for {
-		conn := connectToServer()
-		fmt.Println("Esperando fragmentos del servidor...")
+	// Cargar dataset local
+	dataset, err := loadNetflixData("/var/my-data/dataset.csv")
+	if err != nil {
+		fmt.Println("Error al cargar dataset:", err)
+		return
+	}
 
-		fragmentCounter := 0 // Contador de fragmentos recibidos en esta conexión
+	// Generar recomendaciones para el usuario recibido
+	recommendations := generateRecommendations(dataset, targetUserID)
+	fmt.Printf("Recomendaciones generadas para el usuario %d: %v\n", targetUserID, recommendations)
 
-		for {
-			conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-
-			// Recibe un fragmento del servidor
-			fragment, err := receiveFragment(conn)
-			if err != nil {
-				if err == io.EOF {
-					// Manejar cierre de la conexión si es por EOF
-					fmt.Println("\nConexión cerrada por el servidor. Intentando reconectar...")
-					break
-				}
-				// Imprimir el fragmento que causó el error
-				fmt.Printf("\nFragmento que causó el error: %v\n", fragment)
-				fmt.Println("\nError al recibir fragmento:", err)
-				break
-			}
-
-			fragmentCounter++ // Aumenta el contador de fragmentos
-			totalFragments++  // Mantiene un recuento total de fragmentos
-
-			// Procesa el fragmento y muestra el progreso
-			result := processFragment(fragment)
-			showProgress(fragmentCounter, totalFragments)
-			fmt.Printf("\nResultado procesado para fragmento %d: %f\n", fragment.FragmentID, result)
-
-			// Enviar el resultado al servidor
-			if err := sendResult(conn, result); err != nil {
-				fmt.Println("Error al enviar resultado:", err)
-				break
-			}
-		}
-
-		// Enviar mensaje de finalización después de procesar todos los fragmentos
-		fmt.Println("Todos los fragmentos procesados. Enviando mensaje de finalización al servidor...")
-		if err := sendCompletionMessage(conn); err != nil {
-			fmt.Println("Error al enviar mensaje de finalización:", err)
-		} else {
-			fmt.Println("Mensaje de finalización enviado exitosamente.")
-		}
-
-		// Esperar la señal de fin de proceso desde el servidor
-		var endSignal string
-		decoder := gob.NewDecoder(conn)
-		if err := decoder.Decode(&endSignal); err != nil {
-			if err == io.EOF {
-				// Si se recibe EOF, la conexión probablemente se cerró por el servidor
-				fmt.Println("\nServidor cerró la conexión correctamente.")
-			} else {
-				fmt.Println("Error al recibir señal de fin:", err)
-			}
-			break
-		}
-
-		if endSignal == "FIN" {
-			fmt.Println("Servidor ha indicado que ya no hay más fragmentos para procesar.")
-		}
-
-		conn.Close() // Cerrar la conexión después de completar el proceso
+	// Enviar recomendaciones al servidor
+	if err := sendResult(conn, recommendations); err != nil {
+		fmt.Println("Error al enviar recomendaciones:", err)
+	} else {
+		fmt.Println("Recomendaciones enviadas al servidor exitosamente.")
 	}
 }
