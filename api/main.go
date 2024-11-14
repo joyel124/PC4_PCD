@@ -67,8 +67,7 @@ func handleAPI(w http.ResponseWriter, r *http.Request) {
 	// Aquí normalmente harías el procesamiento de las recomendaciones.
 	// Simulamos que obtenemos algunas recomendaciones basadas en los IDs recibidos:
 	recommendations := []Message{
-		{MovieIDs: []int{101, 102, 103}}, // Simulamos una recomendación
-		{MovieIDs: []int{104, 105, 106}}, // Otra recomendación
+		{MovieIDs: []int{40, 10, 13}}, // Simulamos una recomendación
 	}
 
 	// Emitimos las recomendaciones a todos los clientes conectados a través de WebSocket

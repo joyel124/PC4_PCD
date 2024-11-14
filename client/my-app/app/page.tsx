@@ -8,7 +8,16 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Search, X, Film, ThumbsUp } from 'lucide-react'
+import { Search, X, Loader } from 'lucide-react'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 interface Movie {
   id: string
@@ -16,9 +25,10 @@ interface Movie {
   date: string
 }
 
-const PAGE_SIZE = 100; // Número de películas por página
+const PAGE_SIZE = 10 // Número de películas por página
 
 export default function MovieRecommender() {
+  const [allMovies, setAllMovies] = useState<Movie[]>([])
   const [movies, setMovies] = useState<Movie[]>([])
   const [selectedMovies, setSelectedMovies] = useState<Movie[]>([])
   const [recommendations, setRecommendations] = useState<Movie[]>([])
@@ -26,68 +36,55 @@ export default function MovieRecommender() {
   const [socket, setSocket] = useState<WebSocket | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
-  const [allMovies, setAllMovies] = useState<Movie[]>([]);
+  const [totalPages, setTotalPages] = useState(1);
 
   const loadMovies = async () => {
-    setIsLoading(true);
-    const response = await fetch('/movie_titles.csv');
-    const csvText = await response.text();
-  
-    // Usamos PapaParse para convertir el CSV en un array de objetos
+    setIsLoading(true)
+    const response = await fetch('/movie_titles.csv')
+    const csvText = await response.text()
+
     Papa.parse(csvText, {
-      header: false, // No usa las primeras filas como headers
-      skipEmptyLines: true, // Ignorar líneas vacías
+      header: false,
+      skipEmptyLines: true,
       complete: (result) => {
         const formattedMovies = (result.data as string[][]).map((row: string[]) => ({
-          id: row[0],        // ID de la película
-          date: row[1],      // Año de la película
-          name: row[2],      // Título de la película
-        }));
-  
-        // Guardamos todas las películas en allMovies solo una vez
-        setAllMovies(formattedMovies);
-  
-        // Cargamos las primeras películas
-        const moviesForPage = formattedMovies.slice(0, PAGE_SIZE); // Página 1
-        setMovies(moviesForPage); // Mostrar las primeras películas
-        setIsLoading(false);
+          id: row[0],
+          date: row[1],
+          name: row[2],
+        }))
+        setTotalPages(Math.ceil(formattedMovies.length / PAGE_SIZE));
+        setAllMovies(formattedMovies)
+        updateMoviesForPage(formattedMovies, currentPage)
+        setIsLoading(false)
       },
-    });
-  };  
-  
-  const connectWebSocket = () => {
-    const ws = new WebSocket('ws://localhost:5902/ws');
-    ws.onopen = () => console.log('Connected to WebSocket');
-  
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      console.log('Received data:', data);
-  
-      // Verificamos que `movieIds` sea un array
-      if (Array.isArray(data.movieIds)) {
-        // Mapeamos los movieIds a los nombres correspondientes usando el array `allMovies`
-        const mappedRecommendations = data.movieIds.map((id: number) => {
-          console.log('ID:', id);
-          console.log('All Movies:', allMovies);
-          console.log('All Movies Con el Id:', allMovies.map((movie) => movie.id === id.toString()));
-          const movie = allMovies.find((movie) => movie.id === id.toString()); // Asegúrate de que los IDs coincidan como strings
-          return movie ? movie.name : `Movie not found (${id})`;
-        });
+    })
+  }
 
-        console.log('Recommendations:', mappedRecommendations);
-  
-        // Actualizamos las recomendaciones con los nombres
-        setRecommendations((prev) => [...prev, ...mappedRecommendations]);
+  const updateMoviesForPage = (movieList: Movie[], page: number) => {
+    const moviesForPage = movieList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+    setMovies(moviesForPage)
+  }
+
+  const connectWebSocket = () => {
+    const ws = new WebSocket('ws://localhost:5902/ws')
+    ws.onopen = () => console.log('Connected to WebSocket')
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      if (Array.isArray(data.movieIds)) {
+        const mappedRecommendations = data.movieIds.map((id: number) => {
+          const movie = allMovies.find((movie) => movie.id === id.toString())
+          return movie;
+        })
+        console.log('Recommendations:', mappedRecommendations)
+        setRecommendations(mappedRecommendations)
       } else {
-        console.error('Error: Expected an array, but got:', data);
+        console.error('Error: Expected an array, but got:', data)
       }
-    };
-  
-    ws.onerror = (error) => console.log('WebSocket error:', error);
-    ws.onclose = () => console.log('WebSocket connection closed');
-  
-    setSocket(ws);
-  };
+    }
+    ws.onerror = (error) => console.log('WebSocket error:', error)
+    ws.onclose = () => console.log('WebSocket connection closed')
+    setSocket(ws)
+  }
 
   useEffect(() => {
     loadMovies()
@@ -95,7 +92,11 @@ export default function MovieRecommender() {
     return () => {
       if (socket) socket.close()
     }
-  }, [currentPage]) // Re-cargar películas cuando cambie la página
+  }, [])
+
+  useEffect(() => {
+    updateMoviesForPage(allMovies, currentPage)
+  }, [currentPage, allMovies])
 
   const handleSelectMovie = (movie: Movie) => {
     if (selectedMovies.length < 5 && !selectedMovies.some(m => m.id === movie.id)) {
@@ -131,28 +132,44 @@ export default function MovieRecommender() {
     movie.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const loadMoreMovies = () => {
-    setCurrentPage((prevPage) => prevPage + 1); // Incrementar la página actual
-    const nextMovies = allMovies.slice(
-      currentPage * PAGE_SIZE,              // Desplazar por la cantidad de películas mostradas
-      (currentPage + 1) * PAGE_SIZE         // Mostrar la siguiente sección de películas
-    );
-    setMovies((prevMovies) => [...prevMovies, ...nextMovies]); // Agregar más películas a las ya mostradas
-  };
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setIsLoading(true);
+    setTimeout(() => setIsLoading(false), 500); // Simulación de carga
+  }
+
+  // Configuración de las páginas que se muestran
+  const visibleRange = 1; // Número de páginas que deseas mostrar alrededor de la página actual
+  const pages = [];
+
+  for (let i = 1; i <= totalPages; i++) {
+      if (
+          i === 1 || // Siempre muestra la primera página
+          i === totalPages || // Siempre muestra la última página
+          (i >= currentPage - visibleRange && i <= currentPage + visibleRange) // Muestra un rango alrededor de la página actual
+      ) {
+          pages.push(i);
+      } else if (
+          (i === currentPage - visibleRange - 1 || i === currentPage + visibleRange + 1) &&
+          pages[pages.length - 1] !== '...'
+      ) {
+          pages.push('...'); // Agrega un elipsis si hay páginas ocultas
+      }
+  }
 
   return (
     <div className="container mx-auto p-4">
-      <h1 className="text-3xl font-bold mb-6 text-center">Movie Recommender</h1>
-      
+      <h1 className="text-3xl font-bold mb-6 text-center">Sistemas de Recomendación de Películas</h1>
+
       <Tabs defaultValue="select" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="select">Select Movies</TabsTrigger>
-          <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
+          <TabsTrigger value="select">Seleccionar Películas</TabsTrigger>
+          <TabsTrigger value="recommendations">Recomendaciones</TabsTrigger>
         </TabsList>
         <TabsContent value="select">
           <Card>
             <CardHeader>
-              <CardTitle>Select Your 5 Favorite Movies</CardTitle>
+              <CardTitle>Selecciona tus 5 películas favoritas</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="mb-4">
@@ -168,30 +185,84 @@ export default function MovieRecommender() {
                 </div>
               </div>
               <ScrollArea className="h-[50vh]">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredMovies.map((movie) => (
-                    <Card key={movie.id} className="cursor-pointer hover:shadow-lg transition-shadow">
-                      <CardHeader>
-                        <CardTitle className="text-sm">{movie.name}</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-xs text-gray-500">{movie.date}</p>
-                      </CardContent>
-                      <CardFooter>
-                        <Button 
-                          onClick={() => handleSelectMovie(movie)}
-                          disabled={selectedMovies.length >= 5 || selectedMovies.some(m => m.id === movie.id)}
-                          className="w-full text-xs"
-                        >
-                          {selectedMovies.some(m => m.id === movie.id) ? 'Selected' : 'Select'}
-                        </Button>
-                      </CardFooter>
-                    </Card>
-                  ))}
-                </div>
+                {isLoading ? (
+                  <div className="flex justify-center items-center h-full">
+                    <Loader className="animate-spin text-gray-500" size={48} />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {filteredMovies.map((movie) => (
+                      <Card key={movie.id} className="cursor-pointer hover:shadow-lg transition-shadow">
+                        <CardHeader>
+                          <CardTitle className="text-sm">{movie.name}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-xs text-gray-500">{movie.date}</p>
+                        </CardContent>
+                        <CardFooter>
+                          <Button
+                            onClick={() => handleSelectMovie(movie)}
+                            disabled={selectedMovies.length >= 5 || selectedMovies.some(m => m.id === movie.id)}
+                            className="w-full text-xs"
+                          >
+                            {selectedMovies.some(m => m.id === movie.id) ? 'Selected' : 'Select'}
+                          </Button>
+                        </CardFooter>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </ScrollArea>
             </CardContent>
           </Card>
+          {/* Paginación */}
+          <Pagination className="mt-4 flex justify-center items-center space-x-2">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (currentPage > 1) handlePageChange(currentPage - 1);
+                  }}
+                  className={currentPage === 1 ? 'disabled' : ''}
+                >
+                  Anterior
+                </PaginationPrevious>
+              </PaginationItem>
+
+              {pages.map((page, index) =>
+                page === '...' ? (
+                  <PaginationEllipsis key={index} />
+                ) : (
+                  <PaginationItem key={index} className={page === currentPage ? 'active' : ''}>
+                    <PaginationLink
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handlePageChange(page as number);
+                      }}
+                    >
+                      {page}
+                    </PaginationLink>
+                  </PaginationItem>
+                )
+              )}
+
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (currentPage < totalPages) handlePageChange(currentPage + 1);
+                  }}
+                  className={currentPage === totalPages ? 'disabled' : ''}
+                >
+                  Siguiente
+                </PaginationNext>
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
           <div className="mt-6">
             <h2 className="text-xl font-semibold mb-4">Selected Movies ({selectedMovies.length}/5)</h2>
             <div className="flex flex-wrap gap-2 mb-4">
@@ -204,47 +275,26 @@ export default function MovieRecommender() {
                 </Badge>
               ))}
             </div>
-            <Button onClick={handleSubmit} disabled={selectedMovies.length !== 5} className="w-full">
-              Submit Selection
-            </Button>
-          </div>
-          <div className="mt-4">
-            <Button onClick={loadMoreMovies} className="w-full" disabled={isLoading}>
-              {isLoading ? 'Loading...' : 'Load More Movies'}
+            <Button onClick={handleSubmit} disabled={selectedMovies.length !== 5}>
+              Submit Movies
             </Button>
           </div>
         </TabsContent>
+
         <TabsContent value="recommendations">
-          <Card>
-            <CardHeader>
-              <CardTitle>Movie Recommendations</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[60vh]">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {recommendations.map((movie, index) => (
-                    <Card key={index}>
-                      <CardHeader>
-                        <CardTitle className="text-sm flex items-center">
-                          <Film className="mr-2" size={16} />
-                          {movie.name}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-xs text-gray-500">{movie.date}</p>
-                      </CardContent>
-                      <CardFooter>
-                        <Button variant="outline" className="w-full text-xs">
-                          <ThumbsUp className="mr-2" size={14} />
-                          Add to Watchlist
-                        </Button>
-                      </CardFooter>
-                    </Card>
-                  ))}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+          <h2 className="text-xl font-semibold mb-4">Recommended Movies</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {recommendations.map((movie) => (
+              <Card key={movie.id}>
+                <CardHeader>
+                  <CardTitle className="text-sm">{movie.name}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-gray-500">{movie.date}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </TabsContent>
       </Tabs>
     </div>
