@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -14,21 +15,28 @@ var recommendationsCount = make(map[int]int)
 var mu sync.Mutex
 var wg sync.WaitGroup
 
+// Lista de IPs de los nodos cliente en la red
+var nodeIPs = []string{
+	"172.20.0.2:9002", // IP y puerto del nodo 1
+	"172.20.0.3:9002", // IP y puerto del nodo 2
+	"172.20.0.4:9002", // IP y puerto del nodo 3
+}
+
 // Función que maneja la conexión con el nodo cliente
-func handleNodeConnection(conn net.Conn, targetUserID int) {
+func handleNodeConnection(conn net.Conn, favoriteMovieIDs []int) {
 	defer conn.Close()
 
 	// Timeout de 10 minutos en la conexión
 	conn.SetDeadline(time.Now().Add(600 * time.Second))
 
-	// Enviar el ID del usuario objetivo al nodo cliente
+	// Enviar el array de IDs de películas favoritas al nodo cliente
 	encoder := gob.NewEncoder(conn)
-	if err := encoder.Encode(targetUserID); err != nil {
-		fmt.Println("Error al enviar ID del usuario al nodo:", err)
+	if err := encoder.Encode(favoriteMovieIDs); err != nil {
+		fmt.Println("Error al enviar IDs de películas al nodo:", err)
 		wg.Done()
 		return
 	}
-	fmt.Printf("ID del usuario objetivo %d enviado al nodo.\n", targetUserID)
+	fmt.Printf("IDs de películas favoritas %v enviados al nodo.\n", favoriteMovieIDs)
 
 	// Recibir recomendaciones del nodo
 	var recommendations []int
@@ -49,11 +57,57 @@ func handleNodeConnection(conn net.Conn, targetUserID int) {
 	wg.Done()
 }
 
-func main() {
-	// Definir el ID del usuario objetivo (por ejemplo, 1488844)
-	targetUserID := 1488844
+// Función que maneja la conexión con la API
+func handleAPIConnection(conn net.Conn) {
+	defer conn.Close()
 
-	// Iniciar servidor
+	// Configura el timeout para la conexión
+	conn.SetDeadline(time.Now().Add(600 * time.Second))
+
+	// Recibir los IDs de películas favoritas desde la API
+	var favoriteMovieIDs []int
+	decoder := json.NewDecoder(conn)
+	if err := decoder.Decode(&favoriteMovieIDs); err != nil {
+		fmt.Println("Error al decodificar IDs de películas favoritas desde la API:", err)
+		return
+	}
+
+	// Iniciar la recepción de recomendaciones de los nodos
+	wg.Add(len(nodeIPs))
+	for _, nodeIP := range nodeIPs {
+		// Conectar a cada nodo según su IP en la bitácora
+		conn, err := net.Dial("tcp", nodeIP)
+		if err != nil {
+			fmt.Printf("Error al conectar con el nodo %s: %v\n", nodeIP, err)
+			wg.Done()
+			continue
+		}
+
+		go handleNodeConnection(conn, favoriteMovieIDs)
+	}
+
+	// Esperar a que todos los nodos terminen de enviar recomendaciones
+	wg.Wait()
+
+	// Recopilar y enviar las recomendaciones al cliente API
+	finalRecommendations := gatherFinalRecommendations()
+	response, _ := json.Marshal(finalRecommendations)
+	conn.Write(response)
+}
+
+// Reúne las recomendaciones basadas en frecuencia y las ordena
+func gatherFinalRecommendations() []int {
+	var sortedRecommendations []int
+	mu.Lock()
+	for movieID := range recommendationsCount {
+		sortedRecommendations = append(sortedRecommendations, movieID)
+	}
+	mu.Unlock()
+	return sortedRecommendations
+}
+
+func main() {
+	// Iniciar servidor en el puerto 9002
 	listener, err := net.Listen("tcp", "172.20.0.5:9002")
 	if err != nil {
 		fmt.Println("Error al iniciar el servidor:", err)
@@ -63,36 +117,15 @@ func main() {
 
 	fmt.Println("Servidor escuchando en el puerto 9002")
 
-	// Número de nodos que esperamos recibir
-	numNodes := 3 // Definir la cantidad de nodos esperada
-	wg.Add(numNodes)
-
-	// Escuchar por conexiones entrantes
-	for i := 0; i < numNodes; i++ {
+	// Escuchar por conexiones entrantes desde la API
+	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("Error al aceptar conexión:", err)
+			fmt.Println("Error al aceptar conexión de la API:", err)
 			continue
 		}
-		fmt.Println("Nodo conectado")
 
-		// Manejar cada conexión en una goroutine
-		go handleNodeConnection(conn, targetUserID)
-	}
-
-	// Esperar a que todos los nodos terminen de enviar recomendaciones
-	wg.Wait()
-
-	// Mostrar las recomendaciones finales basadas en frecuencia
-	showFinalRecommendations()
-}
-
-// Mostrar las recomendaciones finales después de recibir de todos los nodos
-func showFinalRecommendations() {
-	fmt.Println("Recomendaciones finales para el usuario objetivo:")
-
-	// Ordenar y mostrar las películas más recomendadas
-	for movieID, count := range recommendationsCount {
-		fmt.Printf("Película ID: %d, Recomendaciones: %d\n", movieID, count)
+		// Manejar cada conexión de la API en una goroutine
+		go handleAPIConnection(conn)
 	}
 }

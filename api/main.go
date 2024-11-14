@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/rs/cors"
@@ -54,30 +56,67 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Maneja los mensajes enviados desde la API REST (IDs de películas seleccionadas por el usuario)
+// handleAPI maneja las solicitudes de recomendaciones
 func handleAPI(w http.ResponseWriter, r *http.Request) {
 	var msg Message
-	// Decodificamos el cuerpo de la solicitud que contiene los IDs de las películas seleccionadas
 	err := json.NewDecoder(r.Body).Decode(&msg)
 	if err != nil {
 		http.Error(w, "Error al decodificar el mensaje", http.StatusBadRequest)
 		return
 	}
 
-	// Aquí normalmente harías el procesamiento de las recomendaciones.
-	// Simulamos que obtenemos algunas recomendaciones basadas en los IDs recibidos:
-	recommendations := []Message{
-		{MovieIDs: []int{40, 10, 13}}, // Simulamos una recomendación
+	// Envía los IDs de películas favoritas al servidor de recomendaciones
+	recommendations, err := requestRecommendations(msg.MovieIDs)
+	if err != nil {
+		http.Error(w, "Error al obtener recomendaciones", http.StatusInternalServerError)
+		return
 	}
 
-	// Emitimos las recomendaciones a todos los clientes conectados a través de WebSocket
-	for _, recommendation := range recommendations {
-		broadcast <- recommendation
-	}
+	fmt.Printf("Recomendaciones: %v\n", recommendations)
 
-	// Respondemos con un estado de éxito
+	// Enviamos las recomendaciones a los clientes conectados por WebSocket
+	broadcast <- Message{MovieIDs: recommendations}
+
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(msg)
+	json.NewEncoder(w).Encode(Message{MovieIDs: recommendations})
+}
+
+// requestRecommendations conecta al servidor en el puerto TCP 9002 y obtiene recomendaciones
+func requestRecommendations(favoriteIDs []int) ([]int, error) {
+	// Conecta al servidor de recomendaciones en el puerto 9002
+	conn, err := net.Dial("tcp", "172.20.0.5:9002")
+	if err != nil {
+		log.Printf("Error al conectar con el servidor de recomendaciones: %v", err)
+		return nil, err
+	}
+	defer conn.Close()
+
+	// Envía los IDs de películas favoritas como JSON
+	data, err := json.Marshal(favoriteIDs)
+	if err != nil {
+		log.Printf("Error al serializar los IDs de películas favoritas: %v", err)
+		return nil, err
+	}
+
+	_, err = conn.Write(data)
+	if err != nil {
+		log.Printf("Error al enviar los datos al servidor: %v", err)
+		return nil, err
+	}
+
+	// Configura un tiempo de espera para la respuesta
+	conn.SetReadDeadline(time.Now().Add(300 * time.Second))
+
+	// Lee la respuesta del servidor como JSON
+	var recommendedIDs []int
+	decoder := json.NewDecoder(conn) // Usamos json.NewDecoder para leer directamente de la conexión
+	err = decoder.Decode(&recommendedIDs)
+	if err != nil {
+		log.Printf("Error al decodificar la respuesta: %v", err)
+		return nil, err
+	}
+
+	return recommendedIDs, nil
 }
 
 // Envía los mensajes (recomendaciones) a todos los clientes WebSocket conectados

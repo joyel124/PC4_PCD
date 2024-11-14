@@ -70,6 +70,9 @@ export default function MovieRecommender() {
     ws.onopen = () => console.log('Connected to WebSocket')
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data)
+      console.log('WebSocket message:', data)
+      console.log('Movie IDs:', data.movieIds)
+      console.log('All Movies:', allMovies)
       if (Array.isArray(data.movieIds)) {
         const mappedRecommendations = data.movieIds.map((id: number) => {
           const movie = allMovies.find((movie) => movie.id === id.toString())
@@ -87,12 +90,17 @@ export default function MovieRecommender() {
   }
 
   useEffect(() => {
-    loadMovies()
-    connectWebSocket()
-    return () => {
-      if (socket) socket.close()
+    loadMovies();
+  }, []);
+  
+  useEffect(() => {
+    if (allMovies.length > 0) {
+      connectWebSocket();
     }
-  }, [])
+    return () => {
+      if (socket) socket.close();
+    };
+  }, [allMovies]); // Conectar el WebSocket solo cuando `allMovies` esté lleno  
 
   useEffect(() => {
     updateMoviesForPage(allMovies, currentPage)
@@ -158,7 +166,7 @@ export default function MovieRecommender() {
   }
 
   return (
-    <div className="container mx-auto p-4">
+    <div className="container mx-auto p-10">
       <h1 className="text-3xl font-bold mb-6 text-center">Sistemas de Recomendación de Películas</h1>
 
       <Tabs defaultValue="select" className="w-full">
@@ -176,7 +184,7 @@ export default function MovieRecommender() {
                 <div className="relative">
                   <Input
                     type="text"
-                    placeholder="Search movies..."
+                    placeholder="Buscar películas..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
@@ -205,7 +213,7 @@ export default function MovieRecommender() {
                             disabled={selectedMovies.length >= 5 || selectedMovies.some(m => m.id === movie.id)}
                             className="w-full text-xs"
                           >
-                            {selectedMovies.some(m => m.id === movie.id) ? 'Selected' : 'Select'}
+                            {selectedMovies.some(m => m.id === movie.id) ? 'Seleccionado' : 'Seleccionar'}
                           </Button>
                         </CardFooter>
                       </Card>
@@ -264,7 +272,7 @@ export default function MovieRecommender() {
             </PaginationContent>
           </Pagination>
           <div className="mt-6">
-            <h2 className="text-xl font-semibold mb-4">Selected Movies ({selectedMovies.length}/5)</h2>
+            <h2 className="text-xl font-semibold mb-4">Peliculas Seleccionadas ({selectedMovies.length}/5)</h2>
             <div className="flex flex-wrap gap-2 mb-4">
               {selectedMovies.map((movie) => (
                 <Badge key={movie.id} variant="secondary" className="text-sm py-1 px-2">
@@ -276,13 +284,13 @@ export default function MovieRecommender() {
               ))}
             </div>
             <Button onClick={handleSubmit} disabled={selectedMovies.length !== 5}>
-              Submit Movies
+              Enviar
             </Button>
           </div>
         </TabsContent>
 
         <TabsContent value="recommendations">
-          <h2 className="text-xl font-semibold mb-4">Recommended Movies</h2>
+          <h2 className="text-xl font-semibold mb-4">Peliculas Recomendadas</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {recommendations.map((movie) => (
               <Card key={movie.id}>

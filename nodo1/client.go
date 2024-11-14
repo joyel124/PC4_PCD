@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"time"
 )
 
 // Estructura para almacenar la matriz de calificaciones
@@ -52,11 +51,11 @@ func loadNetflixData(filename string) (RatingData, error) {
 	return data, nil
 }
 
-// Calcular la similitud de coseno entre dos usuarios
-func cosineSimilarity(user1, user2 map[int]float64) float64 {
+// Calcular la similitud de coseno entre dos películas
+func cosineSimilarityBetweenMovies(movie1, movie2 map[int]float64) float64 {
 	var dotProduct, normA, normB float64
-	for movieID, rating1 := range user1 {
-		if rating2, exists := user2[movieID]; exists {
+	for userID, rating1 := range movie1 {
+		if rating2, exists := movie2[userID]; exists {
 			dotProduct += rating1 * rating2
 			normA += rating1 * rating1
 			normB += rating2 * rating2
@@ -68,44 +67,32 @@ func cosineSimilarity(user1, user2 map[int]float64) float64 {
 	return dotProduct / (math.Sqrt(normA) * math.Sqrt(normB))
 }
 
-// Encontrar el usuario más similar al usuario objetivo
-func findMostSimilarUser(data RatingData, targetUser int) int {
-	maxSim := 0.0
-	similarUser := -1
-	maxCommonRatings := 0
+// Generar recomendaciones basadas en las películas favoritas
+func generateMovieRecommendations(data RatingData, favoriteMovies []int) []int {
+	similarMoviesScores := make(map[int]float64)
 
-	for userID, ratings := range data.Ratings {
-		if userID != targetUser {
-			sim := cosineSimilarity(data.Ratings[targetUser], ratings)
-			commonRatings := 0
-
-			for movieID := range data.Ratings[targetUser] {
-				if _, exists := ratings[movieID]; exists {
-					commonRatings++
-				}
+	// Comparar cada película favorita con todas las demás
+	for _, movieID := range favoriteMovies {
+		for otherMovieID, otherMovieRatings := range data.Ratings {
+			if otherMovieID == movieID {
+				continue // No compararse con la misma película
 			}
 
-			if sim > maxSim || (sim == maxSim && commonRatings > maxCommonRatings) {
-				maxSim = sim
-				similarUser = userID
-				maxCommonRatings = commonRatings
-			}
+			// Obtener la similitud entre las dos películas
+			similarity := cosineSimilarityBetweenMovies(data.Ratings[movieID], otherMovieRatings)
+
+			// Almacenar las películas similares y sus puntajes
+			similarMoviesScores[otherMovieID] += similarity
 		}
 	}
-	return similarUser
-}
 
-// Generar recomendaciones para el usuario objetivo basado en el usuario más similar
-func generateRecommendations(data RatingData, targetUser int) []int {
-	similarUser := findMostSimilarUser(data, targetUser)
-	recommendations := []int{}
-
-	for movieID, rating := range data.Ratings[similarUser] {
-		if _, rated := data.Ratings[targetUser][movieID]; !rated && rating >= 3.0 {
-			recommendations = append(recommendations, movieID)
-		}
+	// Generar un array con las películas más recomendadas
+	recommendedMovies := []int{}
+	for movieID := range similarMoviesScores {
+		recommendedMovies = append(recommendedMovies, movieID)
 	}
-	return recommendations
+
+	return recommendedMovies
 }
 
 // Función para enviar el resultado procesado al servidor
@@ -114,36 +101,44 @@ func sendResult(conn net.Conn, result []int) error {
 	return encoder.Encode(result)
 }
 
-// Conectar al servidor y recibir el ID del usuario
-func connectToServerAndReceiveUserID() (net.Conn, int, error) {
-	var conn net.Conn
-	var err error
-
-	for {
-		conn, err = net.Dial("tcp", "172.20.0.5:9002")
-		if err != nil {
-			fmt.Println("Error al conectar con el servidor. Reintentando en 2 segundos...")
-			time.Sleep(2 * time.Second)
-			continue
-		}
-		fmt.Println("Conectado al servidor")
-
-		// Decodificar el ID del usuario objetivo recibido desde el servidor
-		var targetUserID int
-		decoder := gob.NewDecoder(conn)
-		if err := decoder.Decode(&targetUserID); err != nil {
-			fmt.Println("Error al recibir ID del usuario:", err)
-			conn.Close()
-			return nil, 0, err
-		}
-		fmt.Printf("ID del usuario objetivo recibido: %d\n", targetUserID)
-		return conn, targetUserID, nil
+// Conectar al servidor y recibir el array de películas favoritas
+func listenForServerAndReceiveFavorites() (net.Conn, []int, error) {
+	// Escuchar en un puerto específico
+	listener, err := net.Listen("tcp", "172.20.0.2:9002") // El cliente escucha en el puerto 9003 (por ejemplo)
+	if err != nil {
+		fmt.Println("Error al escuchar el puerto:", err)
+		return nil, nil, err
 	}
+	defer listener.Close()
+
+	fmt.Println("Esperando conexiones entrantes en el puerto 172.20.0.2:9002...")
+
+	// Esperar por una conexión entrante del servidor
+	conn, err := listener.Accept()
+	if err != nil {
+		fmt.Println("Error al aceptar conexión:", err)
+		return nil, nil, err
+	}
+
+	fmt.Println("Conexión establecida con el servidor")
+
+	// Decodificar el array de películas favoritas recibido desde el servidor
+	var favoriteMovies []int
+	decoder := gob.NewDecoder(conn)
+	if err := decoder.Decode(&favoriteMovies); err != nil {
+		fmt.Println("Error al recibir las películas favoritas:", err)
+		conn.Close()
+		return nil, nil, err
+	}
+	fmt.Printf("Películas favoritas recibidas: %v\n", favoriteMovies)
+
+	// Devuelvo la conexión para el uso posterior
+	return conn, favoriteMovies, nil
 }
 
 func main() {
-	// Conectar al servidor y recibir el ID del usuario
-	conn, targetUserID, err := connectToServerAndReceiveUserID()
+	// Conectar al servidor y recibir el array de películas favoritas
+	conn, favoriteMovies, err := listenForServerAndReceiveFavorites()
 	if err != nil {
 		fmt.Println("Error al conectarse al servidor:", err)
 		return
@@ -157,9 +152,9 @@ func main() {
 		return
 	}
 
-	// Generar recomendaciones para el usuario recibido
-	recommendations := generateRecommendations(dataset, targetUserID)
-	fmt.Printf("Recomendaciones generadas para el usuario %d: %v\n", targetUserID, recommendations)
+	// Generar recomendaciones para las películas favoritas
+	recommendations := generateMovieRecommendations(dataset, favoriteMovies)
+	fmt.Printf("Recomendaciones generadas para las películas favoritas: %v\n", recommendations)
 
 	// Enviar recomendaciones al servidor
 	if err := sendResult(conn, recommendations); err != nil {
