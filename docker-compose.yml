@@ -6,7 +6,7 @@ services:
       context: ./nodo1
       dockerfile: Dockerfile
     ports:
-      - "19002:9002"
+      - "1902:9002"
     volumes:
       - dataset:/var/my-data
     depends_on:
@@ -19,7 +19,7 @@ services:
       context: ./nodo2
       dockerfile: Dockerfile
     ports:
-      - "29002:9002"
+      - "2902:9002"
     volumes:
       - dataset:/var/my-data
     depends_on:
@@ -32,7 +32,7 @@ services:
       context: ./nodo3
       dockerfile: Dockerfile
     ports:
-      - "39002:9002"
+      - "3902:9002"
     volumes:
       - dataset:/var/my-data
     depends_on:
@@ -45,10 +45,32 @@ services:
       context: ./server
       dockerfile: Dockerfile
     ports:
-      - "49002:9002"
+      - "4902:9002"
     networks:
       my_network:
         ipv4_address: 172.20.0.5
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "5902:8080"
+    depends_on:
+      - server
+    networks:
+      my_network:
+        ipv4_address: 172.20.0.6
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "6902:3000"
+    depends_on:
+      - server
+    networks:
+      my_network:
+        ipv4_address: 172.20.0.7
 volumes:
   dataset:
 networks:
