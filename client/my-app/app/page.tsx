@@ -1,70 +1,91 @@
-'use client';  // Asegúrate de que este componente se renderice en el cliente
+'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react'
+import { Moon, Sun, Send } from 'lucide-react'
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 type Message = {
-  content: string;
-};
+  content: string
+}
 
-export default function Home() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [content, setContent] = useState<string>('');
+export default function Component() {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [content, setContent] = useState<string>('')
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false)
 
   useEffect(() => {
-    // Crea la conexión WebSocket cuando se carga el componente
-    const socket = new WebSocket('ws://localhost:8080/ws');
+    const socket = new WebSocket('ws://localhost:5902/ws')
 
-    // Cuando se abre la conexión
     socket.onopen = () => {
-      console.log('Conectado al servidor WebSocket');
-    };
+      console.log('Connected to WebSocket server')
+    }
 
-    // Cuando se recibe un mensaje del servidor
     socket.onmessage = (event) => {
-      const newMessage: Message = JSON.parse(event.data);
-      setMessages((prevMessages) => [...prevMessages, newMessage]);
-    };
+      const newMessage: Message = JSON.parse(event.data)
+      setMessages((prevMessages) => [...prevMessages, newMessage])
+    }
 
-    // Maneja errores
     socket.onerror = (error) => {
-      console.log('Error en la conexión WebSocket', error);
-    };
+      console.log('WebSocket connection error', error)
+    }
 
-    // Limpia la conexión WebSocket cuando se desmonte el componente
     return () => {
-      socket.close();
-    };
-  }, []);
+      socket.close()
+    }
+  }, [])
 
-  // Enviar mensaje al servidor WebSocket
   const sendMessage = () => {
-    const socket = new WebSocket('ws://localhost:8080/ws');
-    socket.onopen = () => {
-      socket.send(JSON.stringify({ content }));
-      setContent(''); // Limpiar el campo de entrada después de enviar el mensaje
-    };
-  };
+    if (content.trim()) {
+      const socket = new WebSocket('ws://localhost:5902/api')
+      socket.onopen = () => {
+        socket.send(JSON.stringify({ content }))
+        setContent('')
+      }
+    }
+  }
+
+  const toggleTheme = () => {
+    setIsDarkMode(!isDarkMode)
+  }
 
   return (
-    <div>
-      <h1>Conexión WebSocket en Next.js</h1>
-
-      <div>
-        <input
-          type="text"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="Escribe tu mensaje"
-        />
-        <button onClick={sendMessage}>Enviar</button>
+    <div className={`min-h-screen ${isDarkMode ? 'dark' : ''}`}>
+      <div className="container mx-auto p-4 bg-background text-foreground">
+        <Card className="w-full max-w-2xl mx-auto">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>WebSocket Chat</CardTitle>
+            <Button variant="ghost" size="icon" onClick={toggleTheme}>
+              {isDarkMode ? <Sun className="h-[1.2rem] w-[1.2rem]" /> : <Moon className="h-[1.2rem] w-[1.2rem]" />}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="h-[400px] overflow-y-auto border rounded-md p-4">
+                {messages.map((message, index) => (
+                  <div key={index} className="mb-2 p-2 bg-secondary rounded-md">
+                    {message.content}
+                  </div>
+                ))}
+              </div>
+              <div className="flex space-x-2">
+                <Input
+                  type="text"
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="Type your message"
+                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                />
+                <Button onClick={sendMessage}>
+                  <Send className="h-4 w-4 mr-2" />
+                  Send
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
-
-      <h2>Mensajes recibidos:</h2>
-      <ul>
-        {messages.map((message, index) => (
-          <li key={index}>{message.content}</li>
-        ))}
-      </ul>
     </div>
-  );
+  )
 }
