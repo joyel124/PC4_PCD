@@ -32,3 +32,9 @@ Puedes ejecutar el programa principal usando el comando:
 
 ```bash
 docker-compose up --build
+```
+
+Luego ingresa la siguiente ruta en tu navegador:
+```bash
+localhost:6902
+``` 
