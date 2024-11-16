@@ -154,6 +154,8 @@ func main() {
 
 	// Generar recomendaciones para las películas favoritas
 	recommendations := generateMovieRecommendations(dataset, favoriteMovies)
+	// Recomendaciones de ejemplo:
+	recommendations = []int{6, 7, 8, 9, 10}
 	fmt.Printf("Recomendaciones generadas para las películas favoritas: %v\n", recommendations)
 
 	// Enviar recomendaciones al servidor
