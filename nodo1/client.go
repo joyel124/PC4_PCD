@@ -101,25 +101,8 @@ func sendResult(conn net.Conn, result []int) error {
 	return encoder.Encode(result)
 }
 
-// Conectar al servidor y recibir el array de películas favoritas
-func listenForServerAndReceiveFavorites() (net.Conn, []int, error) {
-	// Escuchar en un puerto específico
-	listener, err := net.Listen("tcp", "172.20.0.2:9002") // El cliente escucha en el puerto 9003 (por ejemplo)
-	if err != nil {
-		fmt.Println("Error al escuchar el puerto:", err)
-		return nil, nil, err
-	}
-	defer listener.Close()
-
-	fmt.Println("Esperando conexiones entrantes en el puerto 172.20.0.2:9002...")
-
-	// Esperar por una conexión entrante del servidor
-	conn, err := listener.Accept()
-	if err != nil {
-		fmt.Println("Error al aceptar conexión:", err)
-		return nil, nil, err
-	}
-
+// Función para manejar la conexión con el servidor
+func handleServerConnection(conn net.Conn) {
 	fmt.Println("Conexión establecida con el servidor")
 
 	// Decodificar el array de películas favoritas recibido desde el servidor
@@ -128,34 +111,25 @@ func listenForServerAndReceiveFavorites() (net.Conn, []int, error) {
 	if err := decoder.Decode(&favoriteMovies); err != nil {
 		fmt.Println("Error al recibir las películas favoritas:", err)
 		conn.Close()
-		return nil, nil, err
+		return
 	}
 	fmt.Printf("Películas favoritas recibidas: %v\n", favoriteMovies)
 
-	// Devuelvo la conexión para el uso posterior
-	return conn, favoriteMovies, nil
-}
-
-func main() {
-	// Conectar al servidor y recibir el array de películas favoritas
-	conn, favoriteMovies, err := listenForServerAndReceiveFavorites()
-	if err != nil {
-		fmt.Println("Error al conectarse al servidor:", err)
-		return
-	}
-	defer conn.Close()
+	fmt.Println("Cargando dataset...")
 
 	// Cargar dataset local
-	dataset, err := loadNetflixData("/var/my-data/dataset.csv")
+	_, err := loadNetflixData("/var/my-data/dataset.csv")
 	if err != nil {
 		fmt.Println("Error al cargar dataset:", err)
 		return
 	}
 
+	fmt.Println("Dataset cargado exitosamente.")
+
 	// Generar recomendaciones para las películas favoritas
-	recommendations := generateMovieRecommendations(dataset, favoriteMovies)
+	// recommendations := generateMovieRecommendations(dataset, favoriteMovies)
 	// Recomendaciones de ejemplo:
-	recommendations = []int{1, 2, 3, 4, 5}
+	recommendations := []int{1, 2, 3, 4, 5}
 	fmt.Printf("Recomendaciones generadas para las películas favoritas: %v\n", recommendations)
 
 	// Enviar recomendaciones al servidor
@@ -163,5 +137,29 @@ func main() {
 		fmt.Println("Error al enviar recomendaciones:", err)
 	} else {
 		fmt.Println("Recomendaciones enviadas al servidor exitosamente.")
+	}
+}
+
+func main() {
+	// Iniciar el servidor y escuchar por conexiones entrantes
+	listener, err := net.Listen("tcp", "172.20.0.2:9002")
+	if err != nil {
+		fmt.Println("Error al iniciar el cliente:", err)
+		os.Exit(1)
+	}
+	defer listener.Close()
+
+	fmt.Println("Esperando conexiones entrantes en el puerto 172.20.0.2:9002...")
+
+	// Escuchar por conexiones entrantes desde el servidor
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println("Error al aceptar conexión:", err)
+			continue
+		}
+
+		// Procesar la conexión en una goroutine
+		handleServerConnection(conn)
 	}
 }
