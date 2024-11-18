@@ -1,54 +1,16 @@
 package main
 
 import (
-	"encoding/csv"
 	"encoding/gob"
 	"fmt"
 	"math"
 	"net"
 	"os"
-	"strconv"
 )
 
 // Estructura para almacenar la matriz de calificaciones
 type RatingData struct {
 	Ratings map[int]map[int]float64
-}
-
-// Cargar datos de calificaciones
-func loadNetflixData(filename string) (RatingData, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return RatingData{}, err
-	}
-	defer file.Close()
-
-	data := RatingData{Ratings: make(map[int]map[int]float64)}
-	reader := csv.NewReader(file)
-
-	// Leer encabezado
-	_, err = reader.Read()
-	if err != nil {
-		return data, err
-	}
-
-	for {
-		record, err := reader.Read()
-		if err != nil {
-			break
-		}
-
-		movieID, _ := strconv.Atoi(record[0])
-		customerID, _ := strconv.Atoi(record[1])
-		rating, _ := strconv.ParseFloat(record[2], 64)
-
-		if data.Ratings[customerID] == nil {
-			data.Ratings[customerID] = make(map[int]float64)
-		}
-		data.Ratings[customerID][movieID] = rating
-	}
-
-	return data, nil
 }
 
 // Calcular la similitud de coseno entre dos películas
@@ -105,26 +67,21 @@ func sendResult(conn net.Conn, result []int) error {
 func handleServerConnection(conn net.Conn) {
 	fmt.Println("Conexión establecida con el servidor")
 
-	// Decodificar el array de películas favoritas recibido desde el servidor
-	var favoriteMovies []int
+	// Decodificar el paquete recibido desde el servidor
+	var payload struct {
+		FavoriteMovieIDs []int
+		RatingData       RatingData
+	}
+
 	decoder := gob.NewDecoder(conn)
-	if err := decoder.Decode(&favoriteMovies); err != nil {
-		fmt.Println("Error al recibir las películas favoritas:", err)
+	if err := decoder.Decode(&payload); err != nil {
+		fmt.Println("Error al recibir datos del servidor:", err)
 		conn.Close()
 		return
 	}
-	fmt.Printf("Películas favoritas recibidas: %v\n", favoriteMovies)
 
-	fmt.Println("Cargando dataset...")
-
-	// Cargar dataset local
-	_, err := loadNetflixData("/var/my-data/dataset.csv")
-	if err != nil {
-		fmt.Println("Error al cargar dataset:", err)
-		return
-	}
-
-	fmt.Println("Dataset cargado exitosamente.")
+	fmt.Printf("Películas favoritas recibidas: %v\n", payload.FavoriteMovieIDs)
+	fmt.Println("Datos de calificación recibidos exitosamente.")
 
 	// Generar recomendaciones para las películas favoritas
 	// recommendations := generateMovieRecommendations(dataset, favoriteMovies)

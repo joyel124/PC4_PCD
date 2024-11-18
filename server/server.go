@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -22,21 +24,78 @@ var nodeIPs = []string{
 	"172.20.0.4:9002", // IP y puerto del nodo 3
 }
 
+var nodeDatasets = []string{
+	"var/my-data/dataset_1.csv",
+	"var/my-data/dataset_2.csv",
+	"var/my-data/dataset_3.csv",
+}
+
+// Estructura para almacenar la matriz de calificaciones
+type RatingData struct {
+	Ratings map[int]map[int]float64
+}
+
+// Cargar datos de calificaciones
+func loadNetflixData(filename string) (RatingData, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return RatingData{}, err
+	}
+	defer file.Close()
+
+	data := RatingData{Ratings: make(map[int]map[int]float64)}
+	reader := csv.NewReader(file)
+
+	// Leer encabezado
+	_, err = reader.Read()
+	if err != nil {
+		return data, err
+	}
+
+	for {
+		record, err := reader.Read()
+		if err != nil {
+			break
+		}
+
+		movieID, _ := strconv.Atoi(record[0])
+		customerID, _ := strconv.Atoi(record[1])
+		rating, _ := strconv.ParseFloat(record[2], 64)
+
+		if data.Ratings[customerID] == nil {
+			data.Ratings[customerID] = make(map[int]float64)
+		}
+		data.Ratings[customerID][movieID] = rating
+	}
+
+	return data, nil
+}
+
 // Función que maneja la conexión con el nodo cliente
-func handleNodeConnection(conn net.Conn, favoriteMovieIDs []int) {
+func handleNodeConnection(conn net.Conn, favoriteMovieIDs []int, ratingData RatingData) {
 	defer conn.Close()
 
 	// Timeout de 10 minutos en la conexión
 	conn.SetDeadline(time.Now().Add(600 * time.Second))
 
-	// Enviar el array de IDs de películas favoritas al nodo cliente
+	// Crear un paquete que incluya las películas favoritas y el dataset
+	payload := struct {
+		FavoriteMovieIDs []int
+		RatingData       RatingData
+	}{
+		FavoriteMovieIDs: favoriteMovieIDs,
+		RatingData:       ratingData,
+	}
+
+	// Enviar el paquete al nodo cliente
 	encoder := gob.NewEncoder(conn)
-	if err := encoder.Encode(favoriteMovieIDs); err != nil {
-		fmt.Println("Error al enviar IDs de películas al nodo:", err)
+	if err := encoder.Encode(payload); err != nil {
+		fmt.Println("Error al enviar datos al nodo:", err)
 		wg.Done()
 		return
 	}
-	fmt.Printf("IDs de películas favoritas %v enviados al nodo.\n", favoriteMovieIDs)
+
+	fmt.Printf("Datos enviados al nodo: Películas favoritas %v, Datos de calificación enviados\n", favoriteMovieIDs)
 
 	// Recibir recomendaciones del nodo
 	var recommendations []int
@@ -72,9 +131,17 @@ func handleAPIConnection(conn net.Conn) {
 		return
 	}
 
-	// Iniciar la recepción de recomendaciones de los nodos
+	// Iniciar la conexión con los nodos clientes
 	wg.Add(len(nodeIPs))
-	for _, nodeIP := range nodeIPs {
+	for i, nodeIP := range nodeIPs {
+		// Cargar el dataset correspondiente
+		ratingData, err := loadNetflixData(nodeDatasets[i])
+		if err != nil {
+			fmt.Printf("Error al cargar dataset %s: %v\n", nodeDatasets[i], err)
+			wg.Done()
+			continue
+		}
+
 		// Conectar a cada nodo según su IP en la bitácora
 		conn, err := net.Dial("tcp", nodeIP)
 		if err != nil {
@@ -83,7 +150,7 @@ func handleAPIConnection(conn net.Conn) {
 			continue
 		}
 
-		go handleNodeConnection(conn, favoriteMovieIDs)
+		go handleNodeConnection(conn, favoriteMovieIDs, ratingData)
 	}
 
 	// Esperar a que todos los nodos terminen de enviar recomendaciones

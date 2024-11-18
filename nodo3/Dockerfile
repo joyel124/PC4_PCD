@@ -4,9 +4,9 @@ FROM golang:alpine
 COPY ./client.go ./api-svc003.go
 
 #subir archivo csv
-RUN mkdir /var/my-data
-COPY ./dataset.csv /var/my-data
-RUN chmod 777 /var/my-data/dataset.csv
+# RUN mkdir /var/my-data
+# COPY ./dataset.csv /var/my-data
+# RUN chmod 777 /var/my-data/dataset.csv
 
 #Exponer puerto q usa el algoritmo distribuido
 EXPOSE 9002
