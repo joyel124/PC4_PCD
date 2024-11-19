@@ -84,9 +84,9 @@ func handleServerConnection(conn net.Conn) {
 	fmt.Println("Datos de calificación recibidos exitosamente.")
 
 	// Generar recomendaciones para las películas favoritas
-	recommendations := generateMovieRecommendations(payload.RatingData, payload.FavoriteMovieIDs)
+	// recommendations := generateMovieRecommendations(payload.RatingData, payload.FavoriteMovieIDs)
 	// Recomendaciones de ejemplo:
-	recommendations = []int{11, 12, 13, 14, 15}
+	recommendations := []int{11, 12, 13, 14, 15}
 	fmt.Printf("Recomendaciones generadas para las películas favoritas: %v\n", recommendations)
 
 	// Enviar recomendaciones al servidor

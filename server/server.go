@@ -116,6 +116,33 @@ func handleNodeConnection(conn net.Conn, favoriteMovieIDs []int, ratingData Rati
 	wg.Done()
 }
 
+// Función para verificar si un nodo está disponible
+func checkNodeHealth(nodeIP string) bool {
+	conn, err := net.DialTimeout("tcp", nodeIP, 2*time.Second)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+// Función para redirigir la tarea a otro nodo disponible
+func handleReassignment(favoriteMovieIDs []int, ratingData RatingData) {
+	for _, nodeIP := range nodeIPs {
+		if checkNodeHealth(nodeIP) {
+			conn, err := net.Dial("tcp", nodeIP)
+			if err == nil {
+				// Si el nodo está disponible, enviar los datos
+				wg.Add(1)
+				go handleNodeConnection(conn, favoriteMovieIDs, ratingData, 0) // El índice de nodo es irrelevante aquí
+				return
+			}
+		}
+	}
+	fmt.Println("No hay nodos disponibles para reasignar la tarea.")
+	wg.Done()
+}
+
 // Función que maneja la conexión con la API
 func handleAPIConnection(conn net.Conn) {
 	defer conn.Close()
@@ -146,6 +173,7 @@ func handleAPIConnection(conn net.Conn) {
 		conn, err := net.Dial("tcp", nodeIP)
 		if err != nil {
 			fmt.Printf("Error al conectar con el nodo %s: %v\n", nodeIP, err)
+			handleReassignment(favoriteMovieIDs, ratingData)
 			wg.Done()
 			continue
 		}
