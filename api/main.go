@@ -65,6 +65,8 @@ func handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Printf("Películas recibidas en la API: %v\n", msg.MovieIDs)
+
 	// Envía los IDs de películas favoritas al servidor de recomendaciones
 	recommendations, err := requestRecommendations(msg.MovieIDs)
 	if err != nil {
@@ -72,7 +74,7 @@ func handleAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("Recomendaciones: %v\n", recommendations)
+	fmt.Printf("Recomendaciones enviadas por el nodo servidor: %v\n", recommendations)
 
 	// Enviamos las recomendaciones a los clientes conectados por WebSocket
 	broadcast <- Message{MovieIDs: recommendations}
