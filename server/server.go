@@ -25,9 +25,9 @@ var nodeIPs = []string{
 }
 
 var nodeDatasets = []string{
-	"var/my-data/dataset_1.csv",
-	"var/my-data/dataset_2.csv",
-	"var/my-data/dataset_3.csv",
+	"/var/my-data/dataset_1.csv",
+	"/var/my-data/dataset_2.csv",
+	"/var/my-data/dataset_3.csv",
 }
 
 // Estructura para almacenar la matriz de calificaciones
@@ -72,7 +72,7 @@ func loadNetflixData(filename string) (RatingData, error) {
 }
 
 // Función que maneja la conexión con el nodo cliente
-func handleNodeConnection(conn net.Conn, favoriteMovieIDs []int, ratingData RatingData) {
+func handleNodeConnection(conn net.Conn, favoriteMovieIDs []int, ratingData RatingData, nodeIndex int) {
 	defer conn.Close()
 
 	// Timeout de 10 minutos en la conexión
@@ -95,7 +95,7 @@ func handleNodeConnection(conn net.Conn, favoriteMovieIDs []int, ratingData Rati
 		return
 	}
 
-	fmt.Printf("Datos enviados al nodo: Películas favoritas %v, Datos de calificación enviados\n", favoriteMovieIDs)
+	fmt.Printf("Datos enviados al nodo %d: Películas favoritas: %v\n", nodeIndex+1, favoriteMovieIDs)
 
 	// Recibir recomendaciones del nodo
 	var recommendations []int
@@ -150,7 +150,7 @@ func handleAPIConnection(conn net.Conn) {
 			continue
 		}
 
-		go handleNodeConnection(conn, favoriteMovieIDs, ratingData)
+		go handleNodeConnection(conn, favoriteMovieIDs, ratingData, i)
 	}
 
 	// Esperar a que todos los nodos terminen de enviar recomendaciones
