@@ -16,6 +16,8 @@ import (
 var recommendationsCount = make(map[int]int)
 var mu sync.Mutex
 var wg sync.WaitGroup
+var ratingData RatingData
+var err error
 
 // Lista de IPs de los nodos cliente en la red
 var nodeIPs = []string{
@@ -26,8 +28,8 @@ var nodeIPs = []string{
 
 var nodeDatasets = []string{
 	"/var/my-data/dataset_1.csv",
-	"/var/my-data/dataset_2.csv",
-	"/var/my-data/dataset_3.csv",
+	"/var/my-data/dataset_1.csv",
+	"/var/my-data/dataset_1.csv",
 }
 
 // Estructura para almacenar la matriz de calificaciones
@@ -76,7 +78,7 @@ func handleNodeConnection(conn net.Conn, favoriteMovieIDs []int, ratingData Rati
 	defer conn.Close()
 
 	// Timeout de 10 minutos en la conexión
-	conn.SetDeadline(time.Now().Add(600 * time.Second))
+	// conn.SetDeadline(time.Now().Add(600 * time.Second))
 
 	// Crear un paquete que incluya las películas favoritas y el dataset
 	payload := struct {
@@ -105,6 +107,8 @@ func handleNodeConnection(conn net.Conn, favoriteMovieIDs []int, ratingData Rati
 		wg.Done()
 		return
 	}
+
+	fmt.Printf("Recomendaciones recibidas del nodo %d: %v\n", nodeIndex+1, recommendations)
 
 	// Almacenar las recomendaciones en el mapa compartido
 	mu.Lock()
@@ -148,7 +152,7 @@ func handleAPIConnection(conn net.Conn) {
 	defer conn.Close()
 
 	// Configura el timeout para la conexión
-	conn.SetDeadline(time.Now().Add(600 * time.Second))
+	//  conn.SetDeadline(time.Now().Add(600 * time.Second))
 
 	// Recibir los IDs de películas favoritas desde la API
 	var favoriteMovieIDs []int
@@ -158,16 +162,18 @@ func handleAPIConnection(conn net.Conn) {
 		return
 	}
 
+	fmt.Println("Películas favoritas recibidas desde la API:", favoriteMovieIDs)
+
 	// Iniciar la conexión con los nodos clientes
 	wg.Add(len(nodeIPs))
 	for i, nodeIP := range nodeIPs {
 		// Cargar el dataset correspondiente
-		ratingData, err := loadNetflixData(nodeDatasets[i])
-		if err != nil {
+		// ratingData, err := loadNetflixData(nodeDatasets[i])
+		/*if err != nil {
 			fmt.Printf("Error al cargar dataset %s: %v\n", nodeDatasets[i], err)
 			wg.Done()
 			continue
-		}
+		}*/
 
 		// Conectar a cada nodo según su IP en la bitácora
 		conn, err := net.Dial("tcp", nodeIP)
@@ -183,6 +189,8 @@ func handleAPIConnection(conn net.Conn) {
 
 	// Esperar a que todos los nodos terminen de enviar recomendaciones
 	wg.Wait()
+
+	fmt.Println("Todas las recomendaciones han sido recibidas.")
 
 	// Recopilar y enviar las recomendaciones al cliente API
 	finalRecommendations := gatherFinalRecommendations()
@@ -202,6 +210,14 @@ func gatherFinalRecommendations() []int {
 }
 
 func main() {
+	// Cargar los datos
+	fmt.Println("Cargando datos...")
+	ratingData, err = loadNetflixData(nodeDatasets[0])
+	if err != nil {
+		fmt.Printf("Error al cargar dataset %s: %v\n", nodeDatasets[0], err)
+		os.Exit(1)
+	}
+	fmt.Println("Datos cargados exitosamente.")
 	// Iniciar servidor en el puerto 9002
 	listener, err := net.Listen("tcp", "172.20.0.5:9002")
 	if err != nil {

@@ -107,7 +107,7 @@ func requestRecommendations(favoriteIDs []int) ([]int, error) {
 	}
 
 	// Configura un tiempo de espera para la respuesta
-	conn.SetReadDeadline(time.Now().Add(300 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(600 * time.Second))
 
 	// Lee la respuesta del servidor como JSON
 	var recommendedIDs []int

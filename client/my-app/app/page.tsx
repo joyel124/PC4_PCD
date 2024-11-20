@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Papa from 'papaparse'
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -18,6 +18,8 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import { ModeToggle } from '@/components/mode-toggle'
+import { useToast } from "@/hooks/use-toast"
 
 interface Movie {
   id: string
@@ -37,6 +39,8 @@ export default function MovieRecommender() {
   const [currentPage, setCurrentPage] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [totalPages, setTotalPages] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { toast } = useToast()
 
   const loadMovies = async () => {
     setIsLoading(true)
@@ -80,6 +84,7 @@ export default function MovieRecommender() {
         })
         console.log('Recommendations:', mappedRecommendations)
         setRecommendations(mappedRecommendations)
+        setIsSubmitting(false)
       } else {
         console.error('Error: Expected an array, but got:', data)
       }
@@ -118,6 +123,7 @@ export default function MovieRecommender() {
 
   const handleSubmit = async () => {
     if (selectedMovies.length === 5) {
+      setIsSubmitting(true)
       try {
         const response = await fetch('http://localhost:5902/api', {
           method: 'POST',
@@ -126,10 +132,20 @@ export default function MovieRecommender() {
         })
         const data = await response.json()
         console.log(data)
-        alert("Movies submitted successfully")
+        toast({
+          title: 'Éxito',
+          description: 'Películas recomendadas recibidas con éxito',
+          variant: 'default',
+        })
+        setIsSubmitting(false)
       } catch (error) {
         console.error("Error submitting movies", error)
-        alert("Error submitting movies")
+        toast({
+          title: 'Error',
+          description: 'Hubo un error al enviar las películas',
+          variant: 'destructive',
+        })
+        setIsSubmitting(false)
       }
     } else {
       alert("Please select 5 movies.")
@@ -168,7 +184,9 @@ export default function MovieRecommender() {
   return (
     <div className="container mx-auto p-10">
       <h1 className="text-3xl font-bold mb-6 text-center">Sistemas de Recomendación de Películas</h1>
-
+      <div className="fixed bottom-4 right-4">
+        <ModeToggle />
+      </div>
       <Tabs defaultValue="select" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="select">Seleccionar Películas</TabsTrigger>
@@ -203,6 +221,7 @@ export default function MovieRecommender() {
                       <Card key={movie.id} className="cursor-pointer hover:shadow-lg transition-shadow">
                         <CardHeader>
                           <CardTitle className="text-sm">{movie.name}</CardTitle>
+                          <CardDescription>{movie.id}</CardDescription>
                         </CardHeader>
                         <CardContent>
                           <p className="text-xs text-gray-500">{movie.date}</p>
@@ -283,8 +302,8 @@ export default function MovieRecommender() {
                 </Badge>
               ))}
             </div>
-            <Button onClick={handleSubmit} disabled={selectedMovies.length !== 5}>
-              Enviar
+            <Button onClick={handleSubmit} disabled={isSubmitting || selectedMovies.length !== 5}>
+              {isSubmitting ? 'Esperando...' : 'Enviar'}
             </Button>
           </div>
         </TabsContent>
@@ -296,6 +315,7 @@ export default function MovieRecommender() {
               <Card key={movie.id}>
                 <CardHeader>
                   <CardTitle className="text-sm">{movie.name}</CardTitle>
+                  <CardDescription>{movie.id}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <p className="text-xs text-gray-500">{movie.date}</p>
